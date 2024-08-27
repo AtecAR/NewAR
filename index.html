@@ -3,61 +3,110 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ARマーカー位置の記憶と表示</title>
+    <title>ARテスト画面</title>
     <style>
-        body { margin: 0; }
-        #predictions { position: absolute; top: 10px; left: 10px; background: rgba(0, 0, 0, 0.5); color: white; padding: 5px; }
+        /* ボタンのスタイル */
+        .back-button {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            width: 40px;
+            height: 40px;
+            background-color: #f44336; /* 赤色 */
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 20px;
+            line-height: 40px;
+            text-align: center;
+            cursor: pointer;
+            z-index: 1000; /* ボタンを最前面に */
+        }
+
+        .back-button:hover {
+            background-color: #d32f2f; /* ホバー時の色変更 */
+        }
+
+        #predictions {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            padding: 5px;
+        }
     </style>
-    <!--Aframe-->
+    <!-- A-Frame -->
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
     
-    <!--AR.js-->
+    <!-- AR.js -->
     <script src="https://cdn.jsdelivr.net/npm/aframe-ar@1.0.4/aframe-ar.js"></script>
     
-    <!--TensorFlow.js-->
+    <!-- TensorFlow.js -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
 </head>
-<body>
+<body style="margin: 0; overflow: hidden;">
+
+    <!-- A-Frameシーンの定義 -->
     <a-scene
         embedded
         vr-mode-ui="enabled: false;"
         loading-screen="enabled: false;"
-        arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;">
-        
+        arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;"
+    >
+        <!-- マーカーの定義 -->
         <a-marker
             id="marker"
             type="pattern"
             preset="custom"
-            url="assets/marker.patt">
-            <a-entity id="model" gltf-model="assets/BlueCube.glb" position="0 0 0" scale="1 1 1"></a-entity>
+            url="assets/marker.patt"
+        >
+            <a-entity
+                id="model"
+                gltf-model="assets/BlueCube.glb"
+                scale="1 1 1"
+                position="0 0 0"
+            ></a-entity>
         </a-marker>
-
         <a-entity camera></a-entity>
     </a-scene>
 
+    <!-- TensorFlow.jsのビデオと予測結果表示用 -->
     <video id="video" width="640" height="480" autoplay></video>
     <div id="predictions"></div>
 
     <script>
-        async function runTensorFlow() {
+        async function initTensorFlow() {
             const video = document.querySelector('#video');
             video.autoplay = true;
             video.width = 640;
             video.height = 480;
 
-            // Set up the camera stream
-            navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+            // 外カメラを選択する
+            navigator.mediaDevices.enumerateDevices().then(devices => {
+                const videoDevices = devices.filter(device => device.kind === 'videoinput');
+                const externalCamera = videoDevices.find(device => device.label.toLowerCase().includes('back')) || videoDevices[0];
+
+                const constraints = {
+                    video: {
+                        deviceId: externalCamera.deviceId,
+                        facingMode: { ideal: 'environment' }
+                    }
+                };
+
+                return navigator.mediaDevices.getUserMedia(constraints);
+            }).then(stream => {
                 video.srcObject = stream;
                 video.play();
             }).catch(error => {
                 console.error('カメラのストリーム取得エラー:', error);
             });
 
-            // Load Coco-SSD model
+            // TensorFlow.jsのモデルをロード
             const model = await cocoSsd.load();
 
-            // Store last known marker position
+            // マーカー位置の記録
             let lastMarkerPosition = null;
 
             function processFrame() {
@@ -65,18 +114,19 @@
                 model.detect(imgTensor).then(predictions => {
                     document.querySelector('#predictions').innerText = `検出結果: ${JSON.stringify(predictions)}`;
 
-                    // Find the marker in the predictions
+                    // マーカーの検出
                     const markerPrediction = predictions.find(pred => pred.class === 'marker');
 
                     if (markerPrediction) {
-                        // Update last known position
+                        // マーカーが検出された場合、位置を記録
                         lastMarkerPosition = markerPrediction.bbox;
                     } else if (lastMarkerPosition) {
-                        // Use last known position if marker is lost
-                        const model = document.querySelector('#model');
-                        const x = (lastMarkerPosition[0] + lastMarkerPosition[2]) / 2;
-                        const y = (lastMarkerPosition[1] + lastMarkerPosition[3]) / 2;
-                        model.setAttribute('position', `${x} ${y} 0`);
+                        // マーカーが失われた場合、記録された位置を使用
+                        const modelEntity = document.querySelector('#model');
+                        const [x1, y1, x2, y2] = lastMarkerPosition;
+                        const x = (x1 + x2) / 2;
+                        const y = (y1 + y2) / 2;
+                        modelEntity.setAttribute('position', `${x} ${y} 0`);
                     }
                 });
 
@@ -86,7 +136,11 @@
             processFrame();
         }
 
-        runTensorFlow();
+        initTensorFlow();
     </script>
+
+    <!-- 戻るボタン -->
+    <button class="back-button" onclick="history.back()">×</button>
+
 </body>
 </html>
