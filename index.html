@@ -36,19 +36,22 @@
         <a-entity camera></a-entity>
     </a-scene>
 
+    <video id="video" width="640" height="480" autoplay></video>
     <div id="predictions"></div>
 
     <script>
         async function runTensorFlow() {
-            const video = document.createElement('video');
+            const video = document.querySelector('#video');
             video.autoplay = true;
             video.width = 640;
             video.height = 480;
-            document.body.appendChild(video);
 
             // Set up the camera stream
             navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
                 video.srcObject = stream;
+                video.play();
+            }).catch(error => {
+                console.error('カメラのストリーム取得エラー:', error);
             });
 
             // Load Coco-SSD model
@@ -60,7 +63,6 @@
             function processFrame() {
                 const imgTensor = tf.browser.fromPixels(video);
                 model.detect(imgTensor).then(predictions => {
-                    // Update predictions on the page
                     document.querySelector('#predictions').innerText = `検出結果: ${JSON.stringify(predictions)}`;
 
                     // Find the marker in the predictions
